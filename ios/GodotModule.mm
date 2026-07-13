@@ -41,6 +41,20 @@
 #include <mutex>
 #include <string>
 
+static constexpr NSInteger GODOT_PREFERRED_FRAMES_PER_SECOND = 60;
+static constexpr CGFloat GODOT_RENDER_SCALE_FACTOR = 1.0;
+
+static void configureGodotDisplayLink(CADisplayLink *displayLink) {
+	if (@available(iOS 15.0, *)) {
+		displayLink.preferredFrameRateRange = CAFrameRateRangeMake(
+				GODOT_PREFERRED_FRAMES_PER_SECOND,
+				GODOT_PREFERRED_FRAMES_PER_SECOND,
+				GODOT_PREFERRED_FRAMES_PER_SECOND);
+	} else {
+		displayLink.preferredFramesPerSecond = GODOT_PREFERRED_FRAMES_PER_SECOND;
+	}
+}
+
 @interface GodotThread : NSObject
 
 // Method to start the thread and run loop
@@ -245,7 +259,7 @@ godot::GodotInstance *GodotModule::get_or_create_instance(std::vector<std::strin
 	instance = reinterpret_cast<godot::GodotInstance *>(godot::internal::get_object_instance_binding(instance_ptr));
 
 	CGRect screen = [[UIScreen mainScreen] bounds];
-	CGFloat contentScaleFactor = [[UIScreen mainScreen] scale];
+	CGFloat contentScaleFactor = GODOT_RENDER_SCALE_FACTOR;
 
 	LOGI("Initialize Main Window Layer on the main thread");
 
@@ -256,6 +270,8 @@ godot::GodotInstance *GodotModule::get_or_create_instance(std::vector<std::strin
 	mainWindowLayer.position = CGPointMake(0, 0);
 	mainWindowLayer.anchorPoint = CGPointMake(0, 0);
 	mainWindowLayer.contentsScale = contentScaleFactor;
+	mainWindowLayer.magnificationFilter = kCAFilterNearest;
+	mainWindowLayer.minificationFilter = kCAFilterNearest;
 
 	godot::RenderingNativeSurface *ptr = godot::Object::cast_to<godot::RenderingNativeSurface>(appleSurface.ptr());
 	godot::Ref<godot::RenderingNativeSurface> nativeSurface(ptr);
@@ -268,7 +284,8 @@ godot::GodotInstance *GodotModule::get_or_create_instance(std::vector<std::strin
 		std::lock_guard lock(_mutex);
 
 		data->displayLink = [CADisplayLink displayLinkWithTarget:data->thread
-														selector:@selector(step:)];
+												selector:@selector(step:)];
+		configureGodotDisplayLink(data->displayLink);
 		[data->displayLink addToRunLoop:[NSRunLoop currentRunLoop]
 								forMode:NSRunLoopCommonModes];
 		data->mainWindowLayer = mainWindowLayer;
@@ -463,7 +480,8 @@ void GodotModule::updateState() {
 				}
 				if (!data->displayLink) {
 					data->displayLink = [CADisplayLink displayLinkWithTarget:data->thread
-																	selector:@selector(step:)];
+															selector:@selector(step:)];
+					configureGodotDisplayLink(data->displayLink);
 					[data->displayLink addToRunLoop:[NSRunLoop currentRunLoop]
 											forMode:NSRunLoopCommonModes];
 				}
